@@ -10,7 +10,7 @@ pushd "%SCRIPT_DIR%" >nul
 if not exist "%LAUNCHER%" (
   echo.
   echo ERROR: "%LAUNCHER%" not found in:
-  echo   %SCRIPT_DIR%
+  echo   !SCRIPT_DIR!
   echo.
   echo Put this .bat next to your launcher script, or edit LAUNCHER at the top.
   pause
@@ -24,19 +24,19 @@ echo Checking for Python...
 
 REM Prefer the Python Launcher (py.exe) if present
 where py >nul 2>nul
-if %errorlevel%==0 (
+if !errorlevel! == 0 (
   py -3 -c "import sys; print(sys.version)" >nul 2>nul
-  if %errorlevel%==0 (
+  if !errorlevel! == 0 (
     set "PY_CMD=py -3"
     goto RUN_LAUNCHER
   )
 )
 
-REM Fallback: python in PATH
+REM Otherwise try python from PATH
 where python >nul 2>nul
-if %errorlevel%==0 (
+if !errorlevel! == 0 (
   python -c "import sys; print(sys.version)" >nul 2>nul
-  if %errorlevel%==0 (
+  if !errorlevel! == 0 (
     set "PY_CMD=python"
     goto RUN_LAUNCHER
   )
@@ -51,7 +51,7 @@ echo   [3] Open python.org downloads page
 echo   [4] Exit
 echo.
 
-set /p choice=Enter 1-4: 
+set /p choice=Enter 1-4:
 
 if "%choice%"=="1" goto INSTALL_WINGET
 if "%choice%"=="2" goto OPEN_STORE
@@ -63,7 +63,7 @@ goto CHECK_PYTHON
 
 :INSTALL_WINGET
 where winget >nul 2>nul
-if not %errorlevel%==0 (
+if not !errorlevel! == 0 (
   echo.
   echo winget is not available on this system.
   echo Use option [2] or [3] instead.
@@ -75,9 +75,8 @@ echo Attempting Python install via winget...
 echo (If prompted by Windows/UAC, accept the install.)
 echo.
 
-REM Try 3.12 first; if it fails, try 3.11
 winget install -e --id Python.Python.3.12
-if not %errorlevel%==0 (
+if not !errorlevel! == 0 (
   echo.
   echo winget install for 3.12 failed; trying Python 3.11...
   winget install -e --id Python.Python.3.11
@@ -103,7 +102,7 @@ goto CHECK_PYTHON
 
 :RUN_LAUNCHER
 echo.
-echo Python detected. Using: %PY_CMD%
+echo Python detected. Using: !PY_CMD!
 echo Running %LAUNCHER%...
 echo.
 
@@ -111,10 +110,12 @@ echo.
 set "EXITCODE=%errorlevel%"
 
 echo.
-echo Launcher exited with code %EXITCODE%.
+echo Launcher exited with code !EXITCODE!.
 pause
 
 popd >nul
-exit /b %EXITCODE%
+exit /b !EXITCODE!
 
-:EXIT_SCRI_
+:EXIT_SCRIPT
+popd >nul
+exit /b 0

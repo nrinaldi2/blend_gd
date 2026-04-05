@@ -1,12 +1,7 @@
 """
 launcher.py
 
-Windows GUI launcher for read_blend.py. It finds Blender's embedded Python,
-checks or installs blender-asset-tracer, prompts for the input .blend path,
-and runs the reader script to generate the JSON export.
-
-JSON exports are written automatically under `Material Outputs/<blend-stem>/`
-next to this launcher/read_blend.py script.
+Small desktop launcher for the Blender material exporter.
 """
 
 import os
@@ -63,8 +58,8 @@ def find_blender_python(blender_dir: Path) -> Path | None:
     Expect user selects folder containing blender.exe OR a parent folder.
     This tries common Blender layouts:
       <dir>\blender.exe
-      <dir>\<version>\python\bin\python.exe
-      <dir>\python\bin\python.exe   (portable builds)
+      <dir>\\<version>\\python\\bin\\python.exe
+      <dir>\\python\\bin\\python.exe   (portable builds)
     """
     blender_dir = blender_dir.resolve()
 
@@ -75,7 +70,7 @@ def find_blender_python(blender_dir: Path) -> Path | None:
             cand = sub / "python" / "bin" / "python.exe"
             if cand.exists():
                 return cand
-        # Try: <dir>\python\bin\python.exe
+        # Try: <dir>\\python\\bin\\python.exe
         cand = blender_dir / "python" / "bin" / "python.exe"
         if cand.exists():
             return cand
@@ -94,6 +89,28 @@ def find_blender_python(blender_dir: Path) -> Path | None:
             pass
 
     return None
+
+def find_blender_exe(blender_dir: Path) -> Path | None:
+    """
+    Resolve blender.exe from the selected Blender folder.
+
+    We pass the full Blender executable path through BLENDER_BIN so
+    read_blend.py can launch Blender for targeted bpy fallback extraction
+    without prompting the user again.
+    """
+    blender_dir = blender_dir.resolve()
+
+    direct = blender_dir / "blender.exe"
+    if direct.exists():
+        return direct
+
+    for p in blender_dir.rglob("blender.exe"):
+        rel_depth = len(p.relative_to(blender_dir).parts)
+        if rel_depth <= 6:
+            return p
+
+    return None
+
 
 
 # --- BAT detection / installation ---
@@ -118,12 +135,12 @@ def install_bat(python_exe: Path, target_dir: Path | None = None) -> tuple[bool,
     """
     outputs = []
 
-    # Ensure pip exists
+    # Make sure pip exists.
     cp = run_python(python_exe, ["-m", "pip", "--version"])
     if cp.returncode != 0:
         cp2 = run_python(python_exe, ["-m", "ensurepip", "--upgrade"])
         outputs.append(cp2.stdout + cp2.stderr)
-        # try pip again
+        # Try pip again.
         cp = run_python(python_exe, ["-m", "pip", "--version"])
         outputs.append(cp.stdout + cp.stderr)
         if cp.returncode != 0:
@@ -154,6 +171,12 @@ def main():
         show_error("Blender Python not found",
                    "Couldn't locate Blender's embedded python.exe.\n\n"
                    "Make sure you selected the folder that contains blender.exe (or a portable Blender folder).")
+        return
+
+    blender_exe = find_blender_exe(blender_dir)
+    if not blender_exe or not blender_exe.exists():
+        show_error("Blender executable not found",
+                   "Couldn't locate blender.exe in the selected Blender folder.")
         return
 
     # Check if BAT is available (normal import)
@@ -206,6 +229,8 @@ def main():
     env = os.environ.copy()
     if extra_path:
         env["PYTHONPATH"] = str(extra_path) + os.pathsep + env.get("PYTHONPATH", "")
+
+    env["BLENDER_BIN"] = str(blender_exe)
 
     cp = subprocess.run(
         [str(blender_py), str(reader_script), str(blend_path), out_json.name],
