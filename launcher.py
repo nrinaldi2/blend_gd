@@ -8,6 +8,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from blender_locator import find_blender_exe, find_blender_python, find_common_blender_exe
+
 MATERIAL_OUTPUTS_DIRNAME = "Material Outputs"
 
 # --- GUI helpers (Windows) ---
@@ -35,6 +37,14 @@ def ask_blend_file():
     root.destroy()
     return Path(f) if f else None
 
+def ask_godot_project_dir():
+    root, filedialog, _ = _tk()
+    d = filedialog.askdirectory(
+        title="Select a Godot project folder to copy this material export into (Cancel to skip)"
+    )
+    root.destroy()
+    return Path(d) if d else None
+
 def ask_yes_no(title, msg):
     root, _, messagebox = _tk()
     ans = messagebox.askyesno(title, msg)
@@ -50,66 +60,6 @@ def show_error(title, msg):
     root, _, messagebox = _tk()
     messagebox.showerror(title, msg)
     root.destroy()
-
-
-# --- Blender python discovery ---
-def find_blender_python(blender_dir: Path) -> Path | None:
-    """
-    Expect user selects folder containing blender.exe OR a parent folder.
-    This tries common Blender layouts:
-      <dir>\blender.exe
-      <dir>\\<version>\\python\\bin\\python.exe
-      <dir>\\python\\bin\\python.exe   (portable builds)
-    """
-    blender_dir = blender_dir.resolve()
-
-    # If they picked the exact folder with blender.exe
-    if (blender_dir / "blender.exe").exists():
-        # Try: <dir>\<ver>\python\bin\python.exe
-        for sub in blender_dir.iterdir():
-            cand = sub / "python" / "bin" / "python.exe"
-            if cand.exists():
-                return cand
-        # Try: <dir>\\python\\bin\\python.exe
-        cand = blender_dir / "python" / "bin" / "python.exe"
-        if cand.exists():
-            return cand
-
-    # Search around for python.exe 
-    for p in blender_dir.rglob("python.exe"):
-        parts = [x.lower() for x in p.parts]
-        try:
-            i = parts.index("python")
-            if i + 2 < len(parts) and parts[i + 1] == "bin" and p.name.lower() == "python.exe":
-                # Depth guard
-                rel_depth = len(p.relative_to(blender_dir).parts)
-                if rel_depth <= 8:
-                    return p
-        except ValueError:
-            pass
-
-    return None
-
-def find_blender_exe(blender_dir: Path) -> Path | None:
-    """
-    Resolve blender.exe from the selected Blender folder.
-
-    We pass the full Blender executable path through BLENDER_BIN so
-    read_blend.py can launch Blender for targeted bpy fallback extraction
-    without prompting the user again.
-    """
-    blender_dir = blender_dir.resolve()
-
-    direct = blender_dir / "blender.exe"
-    if direct.exists():
-        return direct
-
-    for p in blender_dir.rglob("blender.exe"):
-        rel_depth = len(p.relative_to(blender_dir).parts)
-        if rel_depth <= 6:
-            return p
-
-    return None
 
 
 
@@ -162,21 +112,33 @@ def install_bat(python_exe: Path, target_dir: Path | None = None) -> tuple[bool,
 
 
 def main():
-    blender_dir = ask_blender_dir()
-    if not blender_dir:
+    blender_exe = find_common_blender_exe()
+    if blender_exe:
+        blender_dir = blender_exe.parent
+    else:
+        blender_dir = ask_blender_dir()
+        if not blender_dir:
+            return
+        blender_exe = find_blender_exe(blender_dir)
+        if blender_exe and blender_exe.exists():
+            blender_dir = blender_exe.parent
+
+    if not blender_exe or not blender_exe.exists():
+        show_error(
+            "Blender executable not found",
+            "Couldn't locate blender.exe automatically or in the selected folder.\n\n"
+            "Checked common install directories such as:\n"
+            "C:\\Program Files\\Blender Foundation\\...\n"
+            "C:\\Program Files (x86)\\Blender Foundation\\...\n"
+            "C:\\Users\\<you>\\AppData\\Local\\Programs\\Blender Foundation\\...",
+        )
         return
 
     blender_py = find_blender_python(blender_dir)
     if not blender_py or not blender_py.exists():
         show_error("Blender Python not found",
                    "Couldn't locate Blender's embedded python.exe.\n\n"
-                   "Make sure you selected the folder that contains blender.exe (or a portable Blender folder).")
-        return
-
-    blender_exe = find_blender_exe(blender_dir)
-    if not blender_exe or not blender_exe.exists():
-        show_error("Blender executable not found",
-                   "Couldn't locate blender.exe in the selected Blender folder.")
+                   "Make sure Blender is installed completely and the selected folder contains blender.exe.")
         return
 
     # Check if BAT is available (normal import)
@@ -214,6 +176,7 @@ def main():
     blend_path = ask_blend_file()
     if not blend_path:
         return
+    godot_project_dir = ask_godot_project_dir()
 
     script_dir = Path(__file__).resolve().parent
     out_dir = script_dir / MATERIAL_OUTPUTS_DIRNAME / blend_path.stem
@@ -231,6 +194,8 @@ def main():
         env["PYTHONPATH"] = str(extra_path) + os.pathsep + env.get("PYTHONPATH", "")
 
     env["BLENDER_BIN"] = str(blender_exe)
+    env["GODOT_PROJECT_DIR_PROMPTED"] = "1"
+    env["GODOT_PROJECT_DIR"] = str(godot_project_dir) if godot_project_dir else ""
 
     cp = subprocess.run(
         [str(blender_py), str(reader_script), str(blend_path), out_json.name],

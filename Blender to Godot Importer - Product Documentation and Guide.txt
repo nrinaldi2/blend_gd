@@ -1,0 +1,232 @@
+========================================================================================================================
+Non-Photorealistic 3D Modeling and Shader-Based Rendering in Blender
+by Lewis Davis, Colin McClenaghan, Nicholas Rinaldi, Nhat Doan Minh Nguyen
+
+Instructor: Robert M. Fiske
+Department of Computer Science and Engineering, Washkewicz College of Engineering
+Cleveland State University
+========================================================================================================================
+
+
+--------------------------------
+Blender to Godot Importer Guide
+--------------------------------
+
+
+
+- Project purpose -
+
+This workflow is used to export Blender material data into a Godot-ready folder so that supported non-photorealistic Blender materials can be rebuilt as generated Godot shader materials during scene import. 
+The main goal of the project is to reduce the amount of manual material recreation that would normally be needed after bringing a Blender scene into Godot.
+
+
+
+What this workflow does
+------------------------
+1. Prompts the user choose a .blend file.
+2. Reads the material graph and related material data from that Blender file.
+3. Exports a JSON file that stores the material graph and other information needed by Godot.
+4. Exports linked texture images into a textures folder when they are needed.
+5. Copies the matching post_import.gd script into the same material export folder.
+6. Copies the selected source .blend file into that same folder.
+7. Optionally copies the entire finished material folder into a Godot project folder selected by the user in a popup dialogue.
+8. Hands off the necessary information to Godot in the form of an exported JSON with the post_import.gd translation script to build supported materials during reimport.
+
+Project Limitations - What this workflow does not fully automate yet
+-----------------------------------------------
+1. The importer script is still manually selected inside Godot for the imported .blend file.
+2. The .blend scene still needs to be manually reimported after the import script is selected.
+3. Some advanced Blender materials and project files still go beyond the currently supported translation range.
+	- Such as advanced Blender demos.
+4. A minor UV translation issue was previously observed on a second UV map in one test case, causing a slight left shift.
+	- Still an unresolved case.
+
+Main files in the project
+--------------------------
+1. run.bat
+   - This is the Windows entry point. It checks for a usable system Python installation and launches launcher.py.
+
+2. launcher.py
+   - This is the desktop launcher that handles the user-facing popup flow. It finds Blender automatically when possible, checks whether Blender's Python can use blender_asset_tracer, prompts for the .blend file, and prompts for an optional Godot project folder.
+
+3. blender_locator.py
+   - This helper file is used by the launcher and exporter to locate Blender on the computer. It checks common install locations and helps resolve Blender's embedded python.exe.
+
+4. read_blend.py
+   - This is the Blender-side exporter. It reads the Blender file, collects material and node information, builds the export JSON, copies support files into the output folder, and optionally copies the finished export folder into a Godot project.
+
+5. # Godot Files\post_import.gd
+   - This is the Godot-side importer script. It runs during Godot scene import, reads the exported JSON, filters for supported materials, builds shader code from the graph data, and applies generated materials to matching surfaces.
+
+6. Material Outputs\<blend-name>\
+   - This is the default export location for each processed Blender file. Each material export folder is meant to act like a handoff package containing the files needed for the Godot side.
+
+
+
+What is inside each material export folder
+------------------------------------------
+A typical exported material folder contains:
+- <blend-name>.json
+- <blend-name>.blend
+- post_import.gd
+- textures\...
+
+This makes each exported folder largely self-contained for moving into a Godot project, testing, or debugging later.
+
+
+
+Main tools, libraries, and languages used
+------------------------------------------
+1. Windows batch (.bat)
+   - Used to start the workflow from a double-clickable script and to make sure a usable system Python is available before the launcher is run.
+
+2. Python
+   - Used for the launcher logic, Blender locating, export logic, JSON generation, and file-copy operations.
+
+3. tkinter
+   - Used in launcher.py for the file and folder picker popup windows. It is used instead of Blender's embedded Python in folder picking prompts.
+
+4. blender_asset_tracer (BAT)
+   - Used for structured reading of Blender data from the .blend file so the exporter can collect node, link, and material information without needing the user to manually rebuild the material in Godot.
+
+5. bpy enrichment passes
+   - Used where available to gather extra Blender-side details such as color ramp data, image texture details, and other material context that help the exported JSON more closely match the Blender material setup.
+
+6. JSON
+   - Used as the handoff format between Blender and Godot. The Blender side writes it, and the Godot side reads it during import.
+
+7. GDScript
+   - Used for post_import.gd on the Godot side to parse the export and rebuild supported materials as shader materials.
+
+8. Godot Editor scene post-import flow
+   - Used so the importer script can run during Godot scene import and replace supported imported materials with generated ones.
+
+
+
+
+What needs to be installed on the computer using this setup
+------------------------------------------------------------
+1. Blender
+   - Blender must be installed because the workflow needs blender.exe and Blender's embedded Python environment.
+
+2. Python for Windows
+   - A normal system Python installation is used to run launcher.py. If Python is not found, run.bat gives install options.
+
+3. blender_asset_tracer
+   - This package is needed by the exporter. launcher.py checks for it in Blender's embedded Python and attempts to install it if it is missing.
+
+4. Godot
+   - Godot is needed to bring in the exported folder, assign the post-import script, and reimport the .blend scene so the JSON-driven material reconstruction can happen.
+
+
+
+
+How Blender is found
+---------------------
+This workflow tries to find Blender automatically before asking the user to browse for it. 
+It checks the system PATH, common Program Files locations, and a Local AppData Blender install location. 
+If Blender is not found that way, the user is then asked to choose the Blender install folder manually.
+
+
+
+
+
+------------------------------------
+**** How to run the workflow ****
+------------------------------------
+1. Extract and place the project folder wherever you intent to run the importer again in the future.
+2. Double-click run.bat.
+3. If Python is not available on the computer, follow the menu prompts shown by run.bat to install or open a Python install source.
+4. launcher.py should then start.
+5. If Blender is found automatically, the workflow continues. If not, choose the Blender install folder (i.e. ...\Blender Foundation\) or the folder that contains blender.exe.
+6. If blender_asset_tracer is not available inside Blender's embedded Python, allow launcher.py to install it.
+7. Choose the .blend file to export in the popup window that follows.
+8. When prompted, choose a Godot project folder if the finished material folder should be copied straight into a Godot project.
+9. If that popup is cancelled or closed, the export is still created under the normal local Material Outputs folder.
+10. Wait for the export to finish.
+
+
+
+
+
+What happens during export
+---------------------------
+1. The exporter opens the selected .blend file.
+2. Material and node information is collected.
+3. Extra material information is added where available.
+4. JSON output is written into Material Outputs\<blend-name>\<blend-name>.json.
+5. The matching post_import.gd file is copied into the same export folder.
+6. The original selected .blend file is also copied into that folder.
+7. Any needed textures are written into the textures subfolder.
+8. If a Godot project folder was chosen, the whole finished export folder is copied into that Godot project as <godot-project>\<blend-name>\.
+
+
+
+
+------------------------------------------------------
+**** How to use the exported folder inside Godot ****
+------------------------------------------------------
+1. Open the Godot project that contains the copied material folder.
+2. Let Godot detect the copied files.
+3. Locate the imported .blend file in the Godot FileSystem dock.
+4. Select that .blend file.
+5. In the Import dock, set the scene's importer script path to the post_import.gd file that was copied into the same export folder.
+6. Reimport the .blend scene.
+7. Godot should then run post_import.gd, read the exported JSON, build supported shader materials, and apply them to matching surfaces.
+
+
+
+
+
+What post_import.gd is doing in Godot
+--------------------------------------
+1. It gets the source file path for the imported scene.
+2. It looks for the matching JSON export.
+3. It loads the JSON data.
+4. It filters the export down to materials that are marked as import-ready and supported by the current importer.
+5. It builds an internal material representation from the exported graph.
+6. It compiles shader code from that representation.
+7. It applies the generated Godot material to matching mesh surfaces in the imported scene.
+
+
+Expected output location
+Default local output:
+Material Outputs\<blend-name>\
+
+If a Godot project folder is selected:
+<selected-godot-project-folder>\<blend-name>\
+
+
+
+---------------------------
+**** Troubleshooting ****
+---------------------------
+1. Blender is not found automatically.
+   - Use the manual popup and choose the Blender install folder that contains blender.exe.
+
+2. BAT is missing.
+   - Let launcher.py install blender_asset_tracer into Blender's Python environment. If the normal install fails, the workflow already has a fallback install path under a writable user folder.
+
+3. The Godot project folder popup does not appear.
+   - In the current updated workflow, that popup belongs in launcher.py. If it does not appear, make sure the workflow is being started through run.bat so launcher.py handles the prompt.
+
+4. Godot shows a load error for the post-import script and references a uid path.
+   - A cached post_import.gd.uid file inside the Godot project can sometimes cause this problem after files are copied into the project. If that happens, delete the post_import.gd.uid file that Godot created for that copied script, let Godot refresh, then select the importer script again if needed and reimport the .blend file.
+
+5. The imported scene does not change materials after the folder is copied into Godot.
+   - The most common reason is that the importer script still has not been manually assigned to the .blend import settings yet, or the scene has not been reimported after setting that script.
+
+6. The material looks slightly shifted on a UV-based texture.
+   - A minor left-shift issue was previously seen on a second UV map in one test case. The first UV map was fine. This issue was small enough to continue the workflow, but it remains a known edge case to watch for in future materials.
+
+7. A large professional Blender demo project does not translate correctly.
+   - Very advanced preset or studio-style Blender projects, such as projects that demonstrate a broad set of advanced material features, may still contain unsupported or partially understood features. These cases likely need additional research and feature coverage before they can be translated reliably.
+
+
+
+Best current use case for this workflow
+---------------------------------------
+This workflow is best used on Blender scenes whose materials stay within the currently supported translation range, 
+especially the non-photorealistic material structures already tested during development. 
+
+It is most useful when the goal is to move a supported Blender material into Godot with far less manual rebuilding than a normal import would require.

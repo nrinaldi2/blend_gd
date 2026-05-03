@@ -23,12 +23,15 @@ import textwrap
 from datetime import datetime
 from pathlib import Path
 
+from blender_locator import find_common_blender_exe
 from blender_asset_tracer import blendfile
 from blender_asset_tracer.blendfile import iterators
 
 SCHEMA_VERSION = "4.3.0"
 TEXTURE_EXPORTS_DIRNAME = "textures"
 MATERIAL_OUTPUTS_DIRNAME = "Material Outputs"
+GODOT_FILES_DIRNAME = "# Godot Files"
+POST_IMPORT_SCRIPT_NAME = "post_import.gd"
 
 NON_GLTF_IDNAMES = {
     "ShaderNodeBsdfToon": "Toon BSDF",
@@ -192,6 +195,129 @@ def _resolve_output_json_path(blend_path: Path, out_arg: str | None) -> Path:
     out_path = out_dir / out_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
     return out_path
+
+def _post_import_script_path() -> Path:
+    """
+    Return the canonical post-import script that should ship with each export.
+    """
+    return Path(__file__).resolve().parent / GODOT_FILES_DIRNAME / POST_IMPORT_SCRIPT_NAME
+
+def copy_post_import_script(out_dir: Path, warnings):
+    """
+    Copy post_import.gd into the material export folder for a smoother handoff.
+
+    This keeps the Godot-side import helper next to the generated JSON and any
+    exported textures so users can move one folder instead of hunting for the
+    script separately.
+    """
+    source = _post_import_script_path()
+    destination = out_dir / POST_IMPORT_SCRIPT_NAME
+
+    if not source.exists():
+        add_warning(warnings, f"Missing Godot helper script: {source}")
+        return
+
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    except Exception as exc:
+        add_warning(warnings, f"Could not copy '{POST_IMPORT_SCRIPT_NAME}' into export folder: {exc}")
+
+def copy_source_blend_file(blend_path: Path, out_dir: Path, warnings):
+    """
+    Copy the exported .blend file into the material output folder.
+
+    Keeping the source .blend beside the JSON, textures, and Godot helper script
+    makes the export folder a complete handoff package for later debugging or
+    re-export without forcing users to track the original file separately.
+    """
+    source = blend_path.resolve()
+    destination = out_dir / blend_path.name
+
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if destination.exists() and destination.resolve() == source:
+            return
+        shutil.copy2(source, destination)
+    except Exception as exc:
+        add_warning(warnings, f"Could not copy source blend file '{blend_path.name}' into export folder: {exc}")
+
+def ask_godot_project_dir() -> tuple[Path | None, str | None]:
+    """
+    Ask the user for a Godot project folder, allowing cancel to skip the copy.
+    """
+    root = None
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selected = filedialog.askdirectory(
+            title="Select a Godot project folder to copy this material export into (Cancel to skip)"
+        )
+        return (Path(selected), None) if selected else (None, None)
+    except Exception as exc:
+        return None, f"Could not open the Godot project folder picker: {exc}"
+    finally:
+        if root is not None:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+def _godot_project_dir_from_environment() -> tuple[Path | None, str | None]:
+    """
+    Resolve a project-folder choice provided by the launcher.
+
+    The launcher runs under the system Python, so it is the reliable place to
+    show Tk folder dialogs. read_blend.py then consumes that choice through env
+    vars when it runs under Blender's embedded Python.
+    """
+    if os.environ.get("GODOT_PROJECT_DIR_PROMPTED") != "1":
+        return None, None
+
+    selected = (os.environ.get("GODOT_PROJECT_DIR") or "").strip()
+    return (Path(selected), None) if selected else (None, None)
+
+def copy_export_folder_to_godot_project(export_dir: Path, warnings) -> Path | None:
+    """
+    Offer to copy the completed export folder into a selected Godot project.
+
+    If the user cancels the folder picker, the normal Material Outputs export is
+    kept as-is and no project copy is attempted.
+    """
+    project_dir, picker_error = _godot_project_dir_from_environment()
+    if project_dir is None and picker_error is None and os.environ.get("GODOT_PROJECT_DIR_PROMPTED") != "1":
+        project_dir, picker_error = ask_godot_project_dir()
+    if picker_error:
+        add_warning(warnings, picker_error)
+        return None
+    if not project_dir:
+        return None
+
+    source = export_dir.resolve()
+    destination = (project_dir / export_dir.name).resolve()
+
+    if destination == source:
+        return None
+    if source in destination.parents:
+        add_warning(
+            warnings,
+            f"Could not copy export folder '{export_dir.name}' into a subfolder of itself: {destination}",
+        )
+        return None
+
+    try:
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+        return destination
+    except Exception as exc:
+        add_warning(
+            warnings,
+            f"Could not copy export folder '{export_dir.name}' into Godot project folder '{project_dir}': {exc}",
+        )
+        return None
 
 def _first_pointer(block, pointer_names):
     """
@@ -768,22 +894,8 @@ def _find_blender_executable():
     """
     Try to locate a Blender executable for optional bpy enrichment extraction.
     """
-    candidates = []
-    env_value = os.environ.get("BLENDER_BIN")
-    if env_value:
-        candidates.append(env_value)
-
-    for command in ("blender", "blender.exe"):
-        resolved = shutil.which(command)
-        if resolved:
-            candidates.append(resolved)
-
-    seen = set()
-    for candidate in candidates:
-        if candidate and candidate not in seen:
-            seen.add(candidate)
-            return candidate
-    return None
+    blender_bin = find_common_blender_exe()
+    return str(blender_bin) if blender_bin else None
 
 def _extract_color_ramps_via_bpy(blend_path: Path, warnings):
     """
@@ -2313,10 +2425,20 @@ def main():
     enrich_color_ramps_with_bpy(export_payload, blend_path, warnings)
     enrich_linked_images_with_bpy(export_payload, blend_path, out_path.parent, warnings)
     enrich_material_context_with_bpy(export_payload, blend_path, warnings)
+    copy_post_import_script(out_path.parent, warnings)
+    copy_source_blend_file(blend_path, out_path.parent, warnings)
     finalize_material_graph_schema(export_payload, warnings)
 
     out_path.write_text(json.dumps(export_payload, indent=2), encoding="utf-8")
+    warning_count_before_project_copy = len(warnings)
+    project_copy_path = copy_export_folder_to_godot_project(out_path.parent, warnings)
+    if len(warnings) != warning_count_before_project_copy:
+        _build_export_report(export_payload, warnings)
+        out_path.write_text(json.dumps(export_payload, indent=2), encoding="utf-8")
+
     print(f"Wrote {out_path}")
+    if project_copy_path:
+        print(f"Copied material folder to {project_copy_path}")
 
 if __name__ == "__main__":
     main()
