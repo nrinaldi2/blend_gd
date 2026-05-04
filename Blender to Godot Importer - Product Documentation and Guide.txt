@@ -230,3 +230,56 @@ This workflow is best used on Blender scenes whose materials stay within the cur
 especially the non-photorealistic material structures already tested during development. 
 
 It is most useful when the goal is to move a supported Blender material into Godot with far less manual rebuilding than a normal import would require.
+
+
+
+
+Licensing information of this product and its dependencies
+----------------------------------------------------------
+
+>>> Blender to Godot Importer - Product in use here
+
+The members here, of the Blender NPR Portability Workflow, recognise and understand it is our ethical duty and responsibility to acknowledge the original authors of any findings or resources used in the making of this product. 
+
+Any part of this project consisting of external components will be included only after obtaining the appropriate permissions from the source in accordance with Title 17 of the U.S. copyright law.
+
+Any use or modification of this product by members outside of its original members hereby take sole responsibilty of misuse or improper attribution and / or redistribution of additional third-party software or other digital IP not already included in this product package or mentioned in this documentation.
+
+We chose to make this project free to use, and open source on GitHub.
+- Project URL: https://github.com/nrinaldi2/blend_gd/tree/nrinaldi2-full-importer-workflow
+
+
+Our product provides a pipeline to transfer more complicated shader effects into Godot than just importing them directly without paid software. 
+
+The primary purpose of this project was to create an affordable alternative to Substance painter for a new game developer, and charging money for the software was antithetical to that goal. Both Blender and Godot are open source tools, and we see the value in making our own tools open source so that anyone can use or modify them in the future. 
+
+
+
+
+>>> BAT - External Python dependency used in extractor script
+
+https://projects.blender.org/blender/blender-asset-tracer/src/branch/main/docs/license.md
+
+As described under BAT's official license documentation:
+
+"This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA."
+
+
+Documentation: https://creativecommons.org/licenses/by-sa/4.0/
+
+"This is a human-readable summary of (and not a substitute for) the license. Disclaimer. You are free to:
+
+Share — copy and redistribute the material in any medium or format
+Adapt — remix, transform, and build upon the material for any purpose, even commercially.
+Under the following terms:
+
+Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+
+ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
+
+No additional restrictions — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits."
+
